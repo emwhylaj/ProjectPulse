@@ -1,0 +1,68 @@
+using ProjectPulseAPI.Core.Persistence.Repository;
+
+namespace ProjectPulseAPI.Core.Persistence.UnitOfWork
+{
+    public class InMemoryUnitOfWork : IUnitOfWork
+    {
+        private IUserRepository? _userRepository;
+        private IProjectRepository? _projectRepository;
+        private ITaskRepository? _taskRepository;
+        private INotificationRepository? _notificationRepository;
+        private IProjectMemberRepository? _projectMemberRepository;
+        private ITaskCommentRepository? _taskCommentRepository;
+        private IProjectActivityRepository? _projectActivityRepository;
+
+        public IUserRepository UserRepository => _userRepository ??= new InMemoryUserRepository();
+
+        public IProjectRepository ProjectRepository => _projectRepository ??= new InMemoryProjectRepository();
+
+        public ITaskRepository TaskRepository => _taskRepository ??= new InMemoryTaskRepository();
+
+        public INotificationRepository NotificationRepository => _notificationRepository ??= new InMemoryNotificationRepository();
+
+        public IProjectMemberRepository ProjectMemberRepository => _projectMemberRepository ??= new InMemoryProjectMemberRepository();
+
+        public ITaskCommentRepository TaskCommentRepository => _taskCommentRepository ??= new InMemoryTaskCommentRepository();
+
+        public IProjectActivityRepository ProjectActivityRepository => _projectActivityRepository ??= new InMemoryProjectActivityRepository();
+
+        public async Task<int> SaveChangesAsync()
+        {
+            // In memory implementation doesn't need explicit save
+            // Data is saved immediately when operations are performed
+            return await Task.FromResult(1);
+        }
+
+        public async Task BeginTransactionAsync()
+        {
+            // In-memory implementation doesn't support transactions
+            // This is a no-op for compatibility
+            await Task.CompletedTask;
+        }
+
+        public async Task CommitTransactionAsync()
+        {
+            // In-memory implementation doesn't support transactions
+            // This is a no-op for compatibility
+            await Task.CompletedTask;
+        }
+
+        public async Task RollbackTransactionAsync()
+        {
+            // In-memory implementation doesn't support transactions
+            // This is a no-op for compatibility
+            await Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+            // No resources to dispose in in-memory implementation
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            // No resources to dispose in in-memory implementation
+            await Task.CompletedTask;
+        }
+    }
+}

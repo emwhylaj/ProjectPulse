@@ -1,0 +1,161 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryProjectActivityRepository : InMemoryBaseRepository<ProjectActivity>, IProjectActivityRepository
+    {
+        protected override IEnumerable<ProjectActivity> GetAllEntities()
+        {
+            return InMemoryDataService.GetProjectActivities();
+        }
+
+        protected override ProjectActivity? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetProjectActivity(id);
+        }
+
+        protected override ProjectActivity AddEntity(ProjectActivity entity)
+        {
+            return InMemoryDataService.AddProjectActivity(entity);
+        }
+
+        protected override ProjectActivity? UpdateEntity(ProjectActivity entity)
+        {
+            var existingActivity = InMemoryDataService.GetProjectActivity(entity.Id);
+            if (existingActivity != null)
+            {
+                // Copy properties
+                existingActivity.Description = entity.Description;
+                existingActivity.OldValues = entity.OldValues;
+                existingActivity.NewValues = entity.NewValues;
+                existingActivity.UpdatedBy = entity.UpdatedBy;
+                return existingActivity;
+            }
+            return entity;
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var activity = InMemoryDataService.GetProjectActivity(id);
+            if (activity != null)
+            {
+                activity.IsDeleted = true;
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<IEnumerable<ProjectActivity>> GetProjectActivitiesAsync(int projectId, int limit = 50)
+        {
+            var activities = InMemoryDataService.GetProjectActivities()
+                .Where(pa => pa.ProjectId == projectId && !pa.IsDeleted)
+                .OrderByDescending(pa => pa.CreatedAt)
+                .Take(limit)
+                .ToList();
+
+            // Load users
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var activity in activities)
+            {
+                activity.User = users.FirstOrDefault(u => u.Id == activity.UserId);
+            }
+
+            return await Task.FromResult(activities);
+        }
+
+        public async Task<IEnumerable<ProjectActivity>> GetUserActivitiesAsync(int userId, int limit = 50)
+        {
+            var activities = InMemoryDataService.GetProjectActivities()
+                .Where(pa => pa.UserId == userId && !pa.IsDeleted)
+                .OrderByDescending(pa => pa.CreatedAt)
+                .Take(limit)
+                .ToList();
+
+            // Load projects
+            var projects = InMemoryDataService.GetProjects().ToList();
+            foreach (var activity in activities)
+            {
+                activity.Project = projects.FirstOrDefault(p => p.Id == activity.ProjectId);
+            }
+
+            return await Task.FromResult(activities);
+        }
+
+        public async Task<IEnumerable<ProjectActivity>> GetActivitiesByTypeAsync(int projectId, ActivityType activityType)
+        {
+            var activities = InMemoryDataService.GetProjectActivities()
+                .Where(pa => pa.ProjectId == projectId && pa.ActivityType == activityType && !pa.IsDeleted)
+                .OrderByDescending(pa => pa.CreatedAt)
+                .ToList();
+
+            // Load users
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var activity in activities)
+            {
+                activity.User = users.FirstOrDefault(u => u.Id == activity.UserId);
+            }
+
+            return await Task.FromResult(activities);
+        }
+
+        public async Task<IEnumerable<ProjectActivity>> GetRecentActivitiesAsync(int days = 7, int limit = 100)
+        {
+            var cutoffDate = DateTime.UtcNow.AddDays(-days);
+            
+            var activities = InMemoryDataService.GetProjectActivities()
+                .Where(pa => pa.CreatedAt >= cutoffDate && !pa.IsDeleted)
+                .OrderByDescending(pa => pa.CreatedAt)
+                .Take(limit)
+                .ToList();
+
+            // Load users and projects
+            var users = InMemoryDataService.GetUsers().ToList();
+            var projects = InMemoryDataService.GetProjects().ToList();
+
+            foreach (var activity in activities)
+            {
+                activity.User = users.FirstOrDefault(u => u.Id == activity.UserId);
+                activity.Project = projects.FirstOrDefault(p => p.Id == activity.ProjectId);
+            }
+
+            return await Task.FromResult(activities);
+        }
+
+        public async Task LogActivityAsync(int projectId, int userId, ActivityType activityType, string description, 
+            string? entityType = null, int? entityId = null, string? oldValues = null, string? newValues = null)
+        {
+            var activity = new ProjectActivity
+            {
+                ProjectId = projectId,
+                UserId = userId,
+                ActivityType = activityType,
+                Description = description,
+                EntityType = entityType,
+                EntityId = entityId,
+                OldValues = oldValues,
+                NewValues = newValues,
+                CreatedBy = userId.ToString(),
+                UpdatedBy = userId.ToString()
+            };
+
+            InMemoryDataService.AddProjectActivity(activity);
+            await Task.CompletedTask;
+        }
+
+        public async Task DeleteOldActivitiesAsync(DateTime beforeDate)
+        {
+            var oldActivities = InMemoryDataService.GetProjectActivities()
+                .Where(pa => pa.CreatedAt < beforeDate)
+                .ToList();
+
+            foreach (var activity in oldActivities)
+            {
+                activity.IsDeleted = true;
+            }
+            await Task.CompletedTask;
+        }
+    }
+}

@@ -1,0 +1,193 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryProjectRepository : InMemoryBaseRepository<Project>, IProjectRepository
+    {
+        protected override IEnumerable<Project> GetAllEntities()
+        {
+            return InMemoryDataService.GetProjects();
+        }
+
+        protected override Project? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetProject(id);
+        }
+
+        protected override Project AddEntity(Project entity)
+        {
+            return InMemoryDataService.AddProject(entity);
+        }
+
+        protected override Project? UpdateEntity(Project entity)
+        {
+            return InMemoryDataService.UpdateProject(entity);
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var project = InMemoryDataService.GetProject(id);
+            if (project != null)
+            {
+                project.IsDeleted = true;
+                InMemoryDataService.UpdateProject(project);
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<Project?> GetProjectWithDetailsAsync(int id)
+        {
+            var project = InMemoryDataService.GetProject(id);
+            if (project == null || project.IsDeleted) return null;
+
+            // Load related data
+            var projectManager = InMemoryDataService.GetUser(project.ProjectManagerId);
+            if (projectManager != null)
+            {
+                project.ProjectManager = projectManager;
+            }
+
+            var members = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.ProjectId == id && pm.IsActive)
+                .ToList();
+
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var member in members)
+            {
+                member.User = users.FirstOrDefault(u => u.Id == member.UserId);
+            }
+            project.Members = members;
+
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.ProjectId == id && !t.IsDeleted)
+                .ToList();
+
+            foreach (var task in tasks)
+            {
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+            project.Tasks = tasks;
+
+            return await Task.FromResult(project);
+        }
+
+        public async Task<IEnumerable<Project>> GetUserProjectsAsync(int userId)
+        {
+            var projectIds = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.UserId == userId && pm.IsActive)
+                .Select(pm => pm.ProjectId)
+                .ToHashSet();
+
+            var projects = InMemoryDataService.GetProjects()
+                .Where(p => projectIds.Contains(p.Id) && !p.IsDeleted)
+                .ToList();
+
+            // Load related data
+            var users = InMemoryDataService.GetUsers().ToList();
+            var allTasks = InMemoryDataService.GetTasks().ToList();
+
+            foreach (var project in projects)
+            {
+                project.ProjectManager = users.FirstOrDefault(u => u.Id == project.ProjectManagerId);
+                project.Tasks = allTasks.Where(t => t.ProjectId == project.Id && !t.IsDeleted).ToList();
+            }
+
+            return await Task.FromResult(projects);
+        }
+
+        public async Task<IEnumerable<Project>> GetProjectsByStatusAsync(ProjectStatus status)
+        {
+            var projects = InMemoryDataService.GetProjects()
+                .Where(p => p.Status == status && !p.IsDeleted)
+                .ToList();
+
+            // Load project managers
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var project in projects)
+            {
+                project.ProjectManager = users.FirstOrDefault(u => u.Id == project.ProjectManagerId);
+            }
+
+            return await Task.FromResult(projects);
+        }
+
+        public async Task<IEnumerable<Project>> GetProjectsByManagerAsync(int managerId)
+        {
+            var projects = InMemoryDataService.GetProjects()
+                .Where(p => p.ProjectManagerId == managerId && !p.IsDeleted)
+                .ToList();
+
+            // Load tasks
+            var allTasks = InMemoryDataService.GetTasks().ToList();
+            foreach (var project in projects)
+            {
+                project.Tasks = allTasks.Where(t => t.ProjectId == project.Id && !t.IsDeleted).ToList();
+            }
+
+            return await Task.FromResult(projects);
+        }
+
+        public async Task<IEnumerable<Project>> GetOverdueProjectsAsync()
+        {
+            var projects = InMemoryDataService.GetProjects()
+                .Where(p => p.EndDate < DateTime.UtcNow &&
+                           p.Status != ProjectStatus.Completed &&
+                           p.Status != ProjectStatus.Cancelled &&
+                           !p.IsDeleted)
+                .ToList();
+
+            // Load project managers
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var project in projects)
+            {
+                project.ProjectManager = users.FirstOrDefault(u => u.Id == project.ProjectManagerId);
+            }
+
+            return await Task.FromResult(projects);
+        }
+
+        public async Task<Dictionary<ProjectStatus, int>> GetProjectStatusCountsAsync()
+        {
+            var counts = InMemoryDataService.GetProjects()
+                .Where(p => !p.IsDeleted)
+                .GroupBy(p => p.Status)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            return await Task.FromResult(counts);
+        }
+
+        public async Task<IEnumerable<Project>> SearchProjectsAsync(string searchTerm, int? userId = null)
+        {
+            var projects = InMemoryDataService.GetProjects().Where(p => !p.IsDeleted);
+
+            if (userId.HasValue)
+            {
+                var projectIds = InMemoryDataService.GetProjectMembers()
+                    .Where(pm => pm.UserId == userId.Value && pm.IsActive)
+                    .Select(pm => pm.ProjectId)
+                    .ToHashSet();
+
+                projects = projects.Where(p => projectIds.Contains(p.Id));
+            }
+
+            var term = searchTerm.ToLower();
+            projects = projects.Where(p => p.Name.ToLower().Contains(term) ||
+                                     p.Description.ToLower().Contains(term));
+
+            var projectList = projects.ToList();
+
+            // Load project managers
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var project in projectList)
+            {
+                project.ProjectManager = users.FirstOrDefault(u => u.Id == project.ProjectManagerId);
+            }
+
+            return await Task.FromResult(projectList);
+        }
+    }
+}

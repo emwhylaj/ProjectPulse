@@ -1,0 +1,104 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryUserRepository : InMemoryBaseRepository<User>, IUserRepository
+    {
+        protected override IEnumerable<User> GetAllEntities()
+        {
+            return InMemoryDataService.GetUsers();
+        }
+
+        protected override User? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetUser(id);
+        }
+
+        protected override User AddEntity(User entity)
+        {
+            return InMemoryDataService.AddUser(entity);
+        }
+
+        protected override User? UpdateEntity(User entity)
+        {
+            return InMemoryDataService.UpdateUser(entity);
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var user = InMemoryDataService.GetUser(id);
+            if (user != null)
+            {
+                user.IsDeleted = true;
+                InMemoryDataService.UpdateUser(user);
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<User?> GetByEmailAsync(string email)
+        {
+            var users = InMemoryDataService.GetUsers();
+            return await Task.FromResult(users.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase) && u.IsDeleted != true));
+        }
+
+        public async Task<IEnumerable<User>> GetProjectMembersAsync(int projectId)
+        {
+            var projectMembers = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.ProjectId == projectId && pm.IsActive);
+            
+            var userIds = projectMembers.Select(pm => pm.UserId).ToHashSet();
+            var users = InMemoryDataService.GetUsers()
+                .Where(u => userIds.Contains(u.Id) && u.IsDeleted != true);
+            
+            return await Task.FromResult(users);
+        }
+
+        public async Task<IEnumerable<User>> GetUsersByRoleAsync(UserRole role)
+        {
+            var users = InMemoryDataService.GetUsers()
+                .Where(u => u.Role == role && u.IsActive && u.IsDeleted != true);
+            
+            return await Task.FromResult(users);
+        }
+
+        public async Task<bool> IsEmailUniqueAsync(string email, int? excludeUserId = null)
+        {
+            var users = InMemoryDataService.GetUsers();
+            var query = users.Where(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase) && u.IsDeleted != true);
+            
+            if (excludeUserId.HasValue)
+            {
+                query = query.Where(u => u.Id != excludeUserId.Value);
+            }
+            
+            return await Task.FromResult(!query.Any());
+        }
+
+        public async Task UpdateLastLoginAsync(int userId, DateTime loginTime)
+        {
+            var user = InMemoryDataService.GetUser(userId);
+            if (user != null)
+            {
+                user.LastLoginAt = loginTime;
+                InMemoryDataService.UpdateUser(user);
+            }
+            await Task.CompletedTask;
+        }
+
+        public async Task<IEnumerable<User>> SearchUsersAsync(string searchTerm)
+        {
+            var term = searchTerm.ToLower();
+            var users = InMemoryDataService.GetUsers()
+                .Where(u => u.IsActive && u.IsDeleted != true &&
+                    (u.FirstName.ToLower().Contains(term) ||
+                     u.LastName.ToLower().Contains(term) ||
+                     u.Email.ToLower().Contains(term)));
+            
+            return await Task.FromResult(users);
+        }
+    }
+}

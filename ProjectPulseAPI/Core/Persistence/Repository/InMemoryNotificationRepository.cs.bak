@@ -1,0 +1,109 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryNotificationRepository : InMemoryBaseRepository<Notification>, INotificationRepository
+    {
+        protected override IEnumerable<Notification> GetAllEntities()
+        {
+            return InMemoryDataService.GetNotifications();
+        }
+
+        protected override Notification? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetNotification(id);
+        }
+
+        protected override Notification AddEntity(Notification entity)
+        {
+            return InMemoryDataService.AddNotification(entity);
+        }
+
+        protected override Notification? UpdateEntity(Notification entity)
+        {
+            return InMemoryDataService.UpdateNotification(entity);
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var notification = InMemoryDataService.GetNotification(id);
+            if (notification != null)
+            {
+                notification.IsDeleted = true;
+                InMemoryDataService.UpdateNotification(notification);
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<IEnumerable<Notification>> GetUserNotificationsAsync(int userId, bool unreadOnly = false)
+        {
+            var notifications = InMemoryDataService.GetNotifications()
+                .Where(n => n.UserId == userId && !n.IsDeleted);
+            
+            if (unreadOnly)
+                notifications = notifications.Where(n => !n.IsRead);
+
+            return await Task.FromResult(notifications.OrderByDescending(n => n.CreatedAt));
+        }
+
+        public async Task<int> GetUnreadCountAsync(int userId)
+        {
+            var count = InMemoryDataService.GetNotifications()
+                .Count(n => n.UserId == userId && !n.IsRead && !n.IsDeleted);
+            
+            return await Task.FromResult(count);
+        }
+
+        public async Task MarkAsReadAsync(int notificationId)
+        {
+            var notification = InMemoryDataService.GetNotification(notificationId);
+            if (notification != null)
+            {
+                notification.IsRead = true;
+                notification.ReadAt = DateTime.UtcNow;
+                InMemoryDataService.UpdateNotification(notification);
+            }
+            await Task.CompletedTask;
+        }
+
+        public async Task MarkAllAsReadAsync(int userId)
+        {
+            var notifications = InMemoryDataService.GetNotifications()
+                .Where(n => n.UserId == userId && !n.IsRead && !n.IsDeleted);
+
+            foreach (var notification in notifications)
+            {
+                notification.IsRead = true;
+                notification.ReadAt = DateTime.UtcNow;
+                InMemoryDataService.UpdateNotification(notification);
+            }
+            await Task.CompletedTask;
+        }
+
+        public async Task<IEnumerable<Notification>> GetNotificationsByTypeAsync(int userId, NotificationType type)
+        {
+            var notifications = InMemoryDataService.GetNotifications()
+                .Where(n => n.UserId == userId && n.Type == type && !n.IsDeleted)
+                .OrderByDescending(n => n.CreatedAt);
+            
+            return await Task.FromResult(notifications);
+        }
+
+        public async Task DeleteOldNotificationsAsync(DateTime beforeDate)
+        {
+            var oldNotifications = InMemoryDataService.GetNotifications()
+                .Where(n => n.CreatedAt < beforeDate)
+                .ToList();
+
+            foreach (var notification in oldNotifications)
+            {
+                InMemoryDataService.DeleteNotification(notification.Id);
+            }
+            await Task.CompletedTask;
+        }
+    }
+}

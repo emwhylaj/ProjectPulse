@@ -1,0 +1,258 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+using TaskStatus = ProjectPulseAPI.Shared.Enums.TaskStatus;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryTaskRepository : InMemoryBaseRepository<UserTask>, ITaskRepository
+    {
+        protected override IEnumerable<UserTask> GetAllEntities()
+        {
+            return InMemoryDataService.GetTasks();
+        }
+
+        protected override UserTask? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetTask(id);
+        }
+
+        protected override UserTask AddEntity(UserTask entity)
+        {
+            return InMemoryDataService.AddTask(entity);
+        }
+
+        protected override UserTask? UpdateEntity(UserTask entity)
+        {
+            return InMemoryDataService.UpdateTask(entity);
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var task = InMemoryDataService.GetTask(id);
+            if (task != null)
+            {
+                task.IsDeleted = true;
+                InMemoryDataService.UpdateTask(task);
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<UserTask?> GetTaskWithDetailsAsync(int id)
+        {
+            var task = InMemoryDataService.GetTask(id);
+            if (task == null || task.IsDeleted) return null;
+
+            // Load related data
+            var project = InMemoryDataService.GetProject(task.ProjectId);
+            if (project != null)
+            {
+                task.Project = project;
+            }
+
+            var assignedTo = InMemoryDataService.GetUser(task.AssignedToId);
+            if (assignedTo != null)
+            {
+                task.AssignedTo = assignedTo;
+            }
+
+            if (task.ParentTaskId.HasValue)
+            {
+                task.ParentTask = InMemoryDataService.GetTask(task.ParentTaskId.Value);
+            }
+
+            var subTasks = InMemoryDataService.GetTasks()
+                .Where(t => t.ParentTaskId == id && !t.IsDeleted)
+                .ToList();
+            task.SubTasks = subTasks;
+
+            var comments = InMemoryDataService.GetTaskComments()
+                .Where(c => c.TaskId == id && !c.IsDeleted)
+                .ToList();
+
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var comment in comments)
+            {
+                comment.User = users.FirstOrDefault(u => u.Id == comment.UserId);
+            }
+            task.Comments = comments;
+
+            return await Task.FromResult(task);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetUserTasksAsync(int userId, TaskStatus? status = null)
+        {
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.AssignedToId == userId && !t.IsDeleted);
+
+            if (status.HasValue)
+            {
+                tasks = tasks.Where(t => t.Status == status.Value);
+            }
+
+            var taskList = tasks.OrderBy(t => t.DueDate).ToList();
+
+            // Load projects
+            var projects = InMemoryDataService.GetProjects().ToList();
+            foreach (var task in taskList)
+            {
+                task.Project = projects.FirstOrDefault(p => p.Id == task.ProjectId);
+            }
+
+            return await Task.FromResult(taskList);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetProjectTasksAsync(int projectId)
+        {
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.ProjectId == projectId && !t.IsDeleted)
+                .OrderBy(t => t.CreatedAt)
+                .ToList();
+
+            // Load assigned users and parent tasks
+            var users = InMemoryDataService.GetUsers().ToList();
+            var allTasks = InMemoryDataService.GetTasks().ToList();
+
+            foreach (var task in tasks)
+            {
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+                if (task.ParentTaskId.HasValue)
+                {
+                    task.ParentTask = allTasks.FirstOrDefault(t => t.Id == task.ParentTaskId.Value);
+                }
+            }
+
+            return await Task.FromResult(tasks);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetOverdueTasksAsync()
+        {
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.DueDate < DateTime.UtcNow &&
+                           t.Status != TaskStatus.Completed &&
+                           !t.IsDeleted)
+                .ToList();
+
+            // Load related data
+            var projects = InMemoryDataService.GetProjects().ToList();
+            var users = InMemoryDataService.GetUsers().ToList();
+
+            foreach (var task in tasks)
+            {
+                task.Project = projects.FirstOrDefault(p => p.Id == task.ProjectId);
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+
+            return await Task.FromResult(tasks);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetTasksByStatusAsync(TaskStatus status)
+        {
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.Status == status && !t.IsDeleted)
+                .ToList();
+
+            // Load related data
+            var projects = InMemoryDataService.GetProjects().ToList();
+            var users = InMemoryDataService.GetUsers().ToList();
+
+            foreach (var task in tasks)
+            {
+                task.Project = projects.FirstOrDefault(p => p.Id == task.ProjectId);
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+
+            return await Task.FromResult(tasks);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetSubTasksAsync(int parentTaskId)
+        {
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.ParentTaskId == parentTaskId && !t.IsDeleted)
+                .ToList();
+
+            // Load assigned users
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var task in tasks)
+            {
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+
+            return await Task.FromResult(tasks);
+        }
+
+        public async Task<Dictionary<TaskStatus, int>> GetTaskStatusCountsAsync(int? projectId = null)
+        {
+            var tasks = InMemoryDataService.GetTasks().Where(t => !t.IsDeleted);
+
+            if (projectId.HasValue)
+            {
+                tasks = tasks.Where(t => t.ProjectId == projectId.Value);
+            }
+
+            var counts = tasks
+                .GroupBy(t => t.Status)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            return await Task.FromResult(counts);
+        }
+
+        public async Task<IEnumerable<UserTask>> GetTasksDueSoonAsync(int days = 3)
+        {
+            var dueDate = DateTime.UtcNow.AddDays(days);
+            var tasks = InMemoryDataService.GetTasks()
+                .Where(t => t.DueDate <= dueDate &&
+                           t.Status != TaskStatus.Completed &&
+                           !t.IsDeleted)
+                .ToList();
+
+            // Load related data
+            var projects = InMemoryDataService.GetProjects().ToList();
+            var users = InMemoryDataService.GetUsers().ToList();
+
+            foreach (var task in tasks)
+            {
+                task.Project = projects.FirstOrDefault(p => p.Id == task.ProjectId);
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+
+            return await Task.FromResult(tasks);
+        }
+
+        public async Task<IEnumerable<UserTask>> SearchTasksAsync(string searchTerm, int? projectId = null, int? userId = null)
+        {
+            var tasks = InMemoryDataService.GetTasks().Where(t => !t.IsDeleted);
+
+            if (projectId.HasValue)
+            {
+                tasks = tasks.Where(t => t.ProjectId == projectId.Value);
+            }
+
+            if (userId.HasValue)
+            {
+                tasks = tasks.Where(t => t.AssignedToId == userId.Value);
+            }
+
+            var term = searchTerm.ToLower();
+            tasks = tasks.Where(t => t.Title.ToLower().Contains(term) ||
+                               t.Description.ToLower().Contains(term) ||
+                               (t.Tags != null && t.Tags.ToLower().Contains(term)));
+
+            var taskList = tasks.ToList();
+
+            // Load related data
+            var projects = InMemoryDataService.GetProjects().ToList();
+            var users = InMemoryDataService.GetUsers().ToList();
+
+            foreach (var task in taskList)
+            {
+                task.Project = projects.FirstOrDefault(p => p.Id == task.ProjectId);
+                task.AssignedTo = users.FirstOrDefault(u => u.Id == task.AssignedToId);
+            }
+
+            return await Task.FromResult(taskList);
+        }
+    }
+}

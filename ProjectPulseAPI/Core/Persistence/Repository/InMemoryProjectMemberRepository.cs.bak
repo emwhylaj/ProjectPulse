@@ -1,0 +1,142 @@
+using ProjectPulseAPI.Application.Services;
+using ProjectPulseAPI.Core.Entities;
+using ProjectPulseAPI.Core.Persistence.GenericRepo;
+using ProjectPulseAPI.Shared.Enums;
+
+namespace ProjectPulseAPI.Core.Persistence.Repository
+{
+    public class InMemoryProjectMemberRepository : InMemoryBaseRepository<ProjectMember>, IProjectMemberRepository
+    {
+        protected override IEnumerable<ProjectMember> GetAllEntities()
+        {
+            return InMemoryDataService.GetProjectMembers();
+        }
+
+        protected override ProjectMember? GetEntityById(int id)
+        {
+            return InMemoryDataService.GetProjectMember(id);
+        }
+
+        protected override ProjectMember AddEntity(ProjectMember entity)
+        {
+            return InMemoryDataService.AddProjectMember(entity);
+        }
+
+        protected override ProjectMember? UpdateEntity(ProjectMember entity)
+        {
+            return InMemoryDataService.UpdateProjectMember(entity);
+        }
+
+        protected override bool DeleteEntityById(int id)
+        {
+            var projectMember = InMemoryDataService.GetProjectMember(id);
+            if (projectMember != null)
+            {
+                projectMember.IsDeleted = true;
+                InMemoryDataService.UpdateProjectMember(projectMember);
+                return true;
+            }
+            return false;
+        }
+
+        public async Task<ProjectMember?> GetMemberAsync(int projectId, int userId)
+        {
+            var member = InMemoryDataService.GetProjectMembers()
+                .FirstOrDefault(pm => pm.ProjectId == projectId && pm.UserId == userId && !pm.IsDeleted);
+            
+            return await Task.FromResult(member);
+        }
+
+        public async Task<ProjectMember?> GetProjectMemberAsync(int projectId, int userId)
+        {
+            return await GetMemberAsync(projectId, userId);
+        }
+
+        public async Task<IEnumerable<ProjectMember>> GetProjectMembersAsync(int projectId)
+        {
+            var members = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.ProjectId == projectId && !pm.IsDeleted)
+                .ToList();
+
+            // Load users
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var member in members)
+            {
+                member.User = users.FirstOrDefault(u => u.Id == member.UserId);
+            }
+
+            return await Task.FromResult(members);
+        }
+
+        public async Task<IEnumerable<ProjectMember>> GetActiveProjectMembersAsync(int projectId)
+        {
+            var members = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.ProjectId == projectId && pm.IsActive && !pm.IsDeleted)
+                .ToList();
+
+            // Load users
+            var users = InMemoryDataService.GetUsers().ToList();
+            foreach (var member in members)
+            {
+                member.User = users.FirstOrDefault(u => u.Id == member.UserId);
+            }
+
+            return await Task.FromResult(members);
+        }
+
+        public async Task<IEnumerable<ProjectMember>> GetUserMembershipsAsync(int userId)
+        {
+            var memberships = InMemoryDataService.GetProjectMembers()
+                .Where(pm => pm.UserId == userId && !pm.IsDeleted)
+                .ToList();
+
+            // Load projects
+            var projects = InMemoryDataService.GetProjects().ToList();
+            foreach (var membership in memberships)
+            {
+                membership.Project = projects.FirstOrDefault(p => p.Id == membership.ProjectId);
+            }
+
+            return await Task.FromResult(memberships);
+        }
+
+        public async Task<IEnumerable<ProjectMember>> GetUserProjectMembershipsAsync(int userId)
+        {
+            return await GetUserMembershipsAsync(userId);
+        }
+
+        public async Task<bool> IsMemberAsync(int projectId, int userId)
+        {
+            var isMember = InMemoryDataService.GetProjectMembers()
+                .Any(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.IsActive && !pm.IsDeleted);
+            
+            return await Task.FromResult(isMember);
+        }
+
+        public async Task<bool> IsUserProjectMemberAsync(int projectId, int userId)
+        {
+            return await IsMemberAsync(projectId, userId);
+        }
+
+        public async Task<ProjectMemberRole?> GetMemberRoleAsync(int projectId, int userId)
+        {
+            var member = InMemoryDataService.GetProjectMembers()
+                .FirstOrDefault(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.IsActive && !pm.IsDeleted);
+            
+            return await Task.FromResult(member?.Role);
+        }
+
+        public async Task RemoveMemberAsync(int projectId, int userId)
+        {
+            var member = InMemoryDataService.GetProjectMembers()
+                .FirstOrDefault(pm => pm.ProjectId == projectId && pm.UserId == userId);
+            
+            if (member != null)
+            {
+                member.IsActive = false;
+                InMemoryDataService.UpdateProjectMember(member);
+            }
+            await Task.CompletedTask;
+        }
+    }
+}
