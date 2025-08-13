@@ -18,7 +18,7 @@ builder.Services.AddControllers();
 
 // Add Entity Framework
 builder.Services.AddDbContext<ProjectPulseDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Add Unit of Work pattern
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -55,7 +55,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.RequireHttpsMetadata = false;
     options.SaveToken = true;
-    
+
     // Configure the token validation parameters to be set dynamically
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -68,11 +68,11 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.Zero,
         RequireExpirationTime = true,
         RequireSignedTokens = true,
-        
+
         // Set a dummy key that will be replaced in the event handler
         IssuerSigningKey = new SymmetricSecurityKey(new byte[32])
     };
-    
+
     options.Events = new JwtBearerEvents
     {
         OnTokenValidated = context =>

@@ -57,8 +57,8 @@ namespace ProjectPulseAPI.Infrastructure
                 entity.Property(e => e.PhoneNumber).HasMaxLength(20);
                 entity.Property(e => e.ProfileImageUrl).HasMaxLength(500);
 
-                // Global query filter for soft delete
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                // Global query filter for soft delete (handles nullable bool)
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -78,7 +78,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.ProjectManagerId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -107,7 +107,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.ParentTaskId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -128,7 +128,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -154,7 +154,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.ParentCommentId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -173,7 +173,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
@@ -197,7 +197,7 @@ namespace ProjectPulseAPI.Infrastructure
                       .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasQueryFilter(e => e.IsDeleted == false);
+                entity.HasQueryFilter(e => e.IsDeleted != true);
             });
         }
 
