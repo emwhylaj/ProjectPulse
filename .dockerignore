@@ -1,30 +1,96 @@
-**/.classpath
-**/.dockerignore
-**/.env
-**/.git
-**/.gitignore
-**/.project
-**/.settings
-**/.toolstarget
-**/.vs
-**/.vscode
-**/*.*proj.user
-**/*.dbmdl
-**/*.jfm
-**/azds.yaml
-**/bin
-**/charts
-**/docker-compose*
+# .dockerignore file for ProjectPulse
+
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Docker files
 **/Dockerfile*
-**/node_modules
-**/npm-debug.log
-**/obj
-**/secrets.dev.yaml
-**/values.dev.yaml
-LICENSE
-README.md
-!**/.gitignore
-!.git/HEAD
-!.git/config
-!.git/packed-refs
-!.git/refs/heads/**
+**/docker-compose*
+.dockerignore
+
+# Visual Studio
+.vs/
+**/*.user
+**/*.sln.docstates
+**/*.userprefs
+**/.vscode/
+
+# Build results
+**/bin/
+**/obj/
+**/out/
+
+# NuGet
+**/packages/
+*.nupkg
+.nuget/
+
+# Test results
+**/TestResults/
+
+# Logs
+**/logs/
+**/*.log
+
+# Runtime data
+**/pids
+**/*.pid
+**/*.seed
+
+# Coverage directory used by tools like istanbul
+**/coverage/
+
+# Dependency directories
+**/node_modules/
+
+# Optional npm cache directory
+**/.npm
+
+# Optional eslint cache
+**/.eslintcache
+
+# Microbundle cache
+**/.rpt2_cache/
+**/.rts2_cache_cjs/
+**/.rts2_cache_es/
+**/.rts2_cache_umd/
+
+# Optional REPL history
+**/.node_repl_history
+
+# Output of 'npm pack'
+**/*.tgz
+
+# Yarn Integrity file
+**/.yarn-integrity
+
+# dotenv environment variables file
+**/.env
+**/.env.test
+
+# Ignore README and documentation files
+**/README.md
+**/readme.txt
+**/changelog.md
+
+# Ignore temporary files
+**/tmp/
+**/temp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+**/*.swp
+**/*.swo
+
+# Local development files
+**/appsettings.Development.json

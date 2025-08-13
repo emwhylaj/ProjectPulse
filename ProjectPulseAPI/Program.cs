@@ -17,8 +17,29 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // Add Entity Framework
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+// For production, use environment variable if connection string is empty
+if (string.IsNullOrEmpty(connectionString) || connectionString.Contains("localhost"))
+{
+    connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+    
+    // If DATABASE_URL is provided, convert it to the format expected by Npgsql
+    if (!string.IsNullOrEmpty(connectionString) && connectionString.StartsWith("postgres://"))
+    {
+        // Parse postgres:// URL format to connection string format
+        var uri = new Uri(connectionString);
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={uri.UserInfo.Split(':')[0]};Password={uri.UserInfo.Split(':')[1]};SSL Mode=Require;Trust Server Certificate=true";
+    }
+}
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException("Database connection string not found. Set DATABASE_URL environment variable or DefaultConnection in appsettings.json");
+}
+
 builder.Services.AddDbContext<ProjectPulseDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 // Add Unit of Work pattern
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
