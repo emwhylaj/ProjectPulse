@@ -15,7 +15,14 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
 
         public async Task<User?> GetByEmailAsync(string email)
         {
-            return await _dbSet.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            // Use PostgreSQL ILike for case-insensitive comparison
+            // The global query filter already handles IsDeleted filtering
+            return await _dbSet
+                .Where(u => u.IsActive && EF.Functions.ILike(u.Email, email))
+                .FirstOrDefaultAsync();
         }
 
         public async Task<IEnumerable<User>> GetProjectMembersAsync(int projectId)
@@ -28,12 +35,14 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
 
         public async Task<IEnumerable<User>> GetUsersByRoleAsync(UserRole role)
         {
-            return await _dbSet.Where(u => u.Role == role && u.IsActive).ToListAsync();
+            return await _dbSet
+                .Where(u => u.Role == role && u.IsActive)
+                .ToListAsync();
         }
 
         public async Task<bool> IsEmailUniqueAsync(string email, int? excludeUserId = null)
         {
-            var query = _dbSet.Where(u => u.Email.ToLower() == email.ToLower());
+            var query = _dbSet.Where(u => EF.Functions.ILike(u.Email, email));
             if (excludeUserId.HasValue)
             {
                 query = query.Where(u => u.Id != excludeUserId.Value);
@@ -53,12 +62,12 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
 
         public async Task<IEnumerable<User>> SearchUsersAsync(string searchTerm)
         {
-            var term = searchTerm.ToLower();
+            var term = $"%{searchTerm}%";
             return await _dbSet
                 .Where(u => u.IsActive &&
-                    (u.FirstName.ToLower().Contains(term) ||
-                     u.LastName.ToLower().Contains(term) ||
-                     u.Email.ToLower().Contains(term)))
+                    (EF.Functions.ILike(u.FirstName, term) ||
+                     EF.Functions.ILike(u.LastName, term) ||
+                     EF.Functions.ILike(u.Email, term)))
                 .ToListAsync();
         }
     }
@@ -68,9 +77,10 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<Project?> GetProjectWithDetailsAsync(int id)
         {
             return await _dbSet
+                .Where(p => p.IsDeleted != true)
                 .Include(p => p.ProjectManager)
-                .Include(p => p.Members).ThenInclude(m => m.User)
-                .Include(p => p.Tasks).ThenInclude(t => t.AssignedTo)
+                .Include(p => p.Members.Where(m => m.IsActive)).ThenInclude(m => m.User)
+                .Include(p => p.Tasks.Where(t => t.IsDeleted != true)).ThenInclude(t => t.AssignedTo)
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
 
@@ -87,7 +97,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<Project>> GetProjectsByStatusAsync(ProjectStatus status)
         {
             return await _dbSet
-                .Where(p => p.Status == status)
+                .Where(p => p.Status == status && p.IsDeleted != true)
                 .Include(p => p.ProjectManager)
                 .ToListAsync();
         }
@@ -95,8 +105,8 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<Project>> GetProjectsByManagerAsync(int managerId)
         {
             return await _dbSet
-                .Where(p => p.ProjectManagerId == managerId)
-                .Include(p => p.Tasks)
+                .Where(p => p.ProjectManagerId == managerId && p.IsDeleted != true)
+                .Include(p => p.Tasks.Where(t => t.IsDeleted != true))
                 .ToListAsync();
         }
 
@@ -105,7 +115,8 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
             return await _dbSet
                 .Where(p => p.EndDate < DateTime.UtcNow &&
                            p.Status != ProjectStatus.Completed &&
-                           p.Status != ProjectStatus.Cancelled)
+                           p.Status != ProjectStatus.Cancelled &&
+                           p.IsDeleted != true)
                 .Include(p => p.ProjectManager)
                 .ToListAsync();
         }
@@ -113,13 +124,14 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<Dictionary<ProjectStatus, int>> GetProjectStatusCountsAsync()
         {
             return await _dbSet
+                .Where(p => p.IsDeleted != true)
                 .GroupBy(p => p.Status)
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
         }
 
         public async Task<IEnumerable<Project>> SearchProjectsAsync(string searchTerm, int? userId = null)
         {
-            var query = _dbSet.AsQueryable();
+            var query = _dbSet.Where(p => p.IsDeleted != true);
 
             if (userId.HasValue)
             {
@@ -131,10 +143,10 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
                 query = query.Where(p => projectIds.Contains(p.Id));
             }
 
-            var term = searchTerm.ToLower();
+            var term = $"%{searchTerm}%";
             return await query
-                .Where(p => p.Name.ToLower().Contains(term) ||
-                           p.Description.ToLower().Contains(term))
+                .Where(p => EF.Functions.ILike(p.Name, term) ||
+                           EF.Functions.ILike(p.Description, term))
                 .Include(p => p.ProjectManager)
                 .ToListAsync();
         }
@@ -145,17 +157,18 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<UserTask?> GetTaskWithDetailsAsync(int id)
         {
             return await _dbSet
+                .Where(t => t.IsDeleted != true)
                 .Include(t => t.Project)
                 .Include(t => t.AssignedTo)
                 .Include(t => t.ParentTask)
-                .Include(t => t.SubTasks)
+                .Include(t => t.SubTasks.Where(st => st.IsDeleted != true))
                 .Include(t => t.Comments).ThenInclude(c => c.User)
                 .FirstOrDefaultAsync(t => t.Id == id);
         }
 
         public async Task<IEnumerable<UserTask>> GetUserTasksAsync(int userId, TaskStatus? status = null)
         {
-            var query = _dbSet.Where(t => t.AssignedToId == userId);
+            var query = _dbSet.Where(t => t.AssignedToId == userId && t.IsDeleted != true);
 
             if (status.HasValue)
             {
@@ -171,7 +184,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<UserTask>> GetProjectTasksAsync(int projectId)
         {
             return await _dbSet
-                .Where(t => t.ProjectId == projectId)
+                .Where(t => t.ProjectId == projectId && t.IsDeleted != true)
                 .Include(t => t.AssignedTo)
                 .Include(t => t.ParentTask)
                 .OrderBy(t => t.CreatedAt)
@@ -182,7 +195,8 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         {
             return await _dbSet
                 .Where(t => t.DueDate < DateTime.UtcNow &&
-                           t.Status != TaskStatus.Completed)
+                           t.Status != TaskStatus.Completed &&
+                           t.IsDeleted != true)
                 .Include(t => t.Project)
                 .Include(t => t.AssignedTo)
                 .ToListAsync();
@@ -191,7 +205,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<UserTask>> GetTasksByStatusAsync(TaskStatus status)
         {
             return await _dbSet
-                .Where(t => t.Status == status)
+                .Where(t => t.Status == status && t.IsDeleted != true)
                 .Include(t => t.Project)
                 .Include(t => t.AssignedTo)
                 .ToListAsync();
@@ -200,14 +214,14 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<UserTask>> GetSubTasksAsync(int parentTaskId)
         {
             return await _dbSet
-                .Where(t => t.ParentTaskId == parentTaskId)
+                .Where(t => t.ParentTaskId == parentTaskId && t.IsDeleted != true)
                 .Include(t => t.AssignedTo)
                 .ToListAsync();
         }
 
         public async Task<Dictionary<TaskStatus, int>> GetTaskStatusCountsAsync(int? projectId = null)
         {
-            var query = _dbSet.AsQueryable();
+            var query = _dbSet.Where(t => t.IsDeleted != true);
 
             if (projectId.HasValue)
             {
@@ -224,7 +238,8 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
             var dueDate = DateTime.UtcNow.AddDays(days);
             return await _dbSet
                 .Where(t => t.DueDate <= dueDate &&
-                           t.Status != TaskStatus.Completed)
+                           t.Status != TaskStatus.Completed &&
+                           t.IsDeleted != true)
                 .Include(t => t.Project)
                 .Include(t => t.AssignedTo)
                 .ToListAsync();
@@ -232,7 +247,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
 
         public async Task<IEnumerable<UserTask>> SearchTasksAsync(string searchTerm, int? projectId = null, int? userId = null)
         {
-            var query = _dbSet.AsQueryable();
+            var query = _dbSet.Where(t => t.IsDeleted != true);
 
             if (projectId.HasValue)
             {
@@ -244,11 +259,11 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
                 query = query.Where(t => t.AssignedToId == userId.Value);
             }
 
-            var term = searchTerm.ToLower();
+            var term = $"%{searchTerm}%";
             return await query
-                .Where(t => t.Title.ToLower().Contains(term) ||
-                           t.Description.ToLower().Contains(term) ||
-                           (t.Tags != null && t.Tags.ToLower().Contains(term)))
+                .Where(t => EF.Functions.ILike(t.Title, term) ||
+                           EF.Functions.ILike(t.Description, term) ||
+                           (t.Tags != null && EF.Functions.ILike(t.Tags, term)))
                 .Include(t => t.Project)
                 .Include(t => t.AssignedTo)
                 .ToListAsync();
@@ -263,7 +278,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
 
         public async Task<ProjectMember?> GetMemberAsync(int projectId, int userId)
         {
-            return await _dbSet.FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId);
+            return await _dbSet.FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.IsActive);
         }
 
         public async Task<ProjectMember?> GetProjectMemberAsync(int projectId, int userId)
@@ -274,7 +289,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<ProjectMember>> GetProjectMembersAsync(int projectId)
         {
             return await _dbSet
-                .Where(pm => pm.ProjectId == projectId)
+                .Where(pm => pm.ProjectId == projectId && pm.IsActive)
                 .Include(pm => pm.User)
                 .ToListAsync();
         }
@@ -290,7 +305,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<ProjectMember>> GetUserMembershipsAsync(int userId)
         {
             return await _dbSet
-                .Where(pm => pm.UserId == userId)
+                .Where(pm => pm.UserId == userId && pm.IsActive)
                 .Include(pm => pm.Project)
                 .ToListAsync();
         }
@@ -336,9 +351,9 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<TaskComment>> GetTaskCommentsAsync(int taskId)
         {
             return await _dbSet
-                .Where(tc => tc.TaskId == taskId)
+                .Where(tc => tc.TaskId == taskId && tc.IsDeleted != true)
                 .Include(tc => tc.User)
-                .Include(tc => tc.Replies)
+                .Include(tc => tc.Replies.Where(r => r.IsDeleted != true))
                 .OrderBy(tc => tc.CreatedAt)
                 .ToListAsync();
         }
@@ -346,7 +361,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<TaskComment>> GetUserCommentsAsync(int userId)
         {
             return await _dbSet
-                .Where(tc => tc.UserId == userId)
+                .Where(tc => tc.UserId == userId && tc.IsDeleted != true)
                 .Include(tc => tc.Task)
                 .OrderByDescending(tc => tc.CreatedAt)
                 .ToListAsync();
@@ -355,9 +370,9 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<TaskComment?> GetCommentWithRepliesAsync(int commentId)
         {
             return await _dbSet
-                .Where(tc => tc.Id == commentId)
+                .Where(tc => tc.Id == commentId && tc.IsDeleted != true)
                 .Include(tc => tc.User)
-                .Include(tc => tc.Replies)
+                .Include(tc => tc.Replies.Where(r => r.IsDeleted != true))
                 .ThenInclude(r => r.User)
                 .FirstOrDefaultAsync();
         }
@@ -365,7 +380,7 @@ namespace ProjectPulseAPI.Core.Persistence.Repository
         public async Task<IEnumerable<TaskComment>> GetCommentRepliesAsync(int parentCommentId)
         {
             return await _dbSet
-                .Where(tc => tc.ParentCommentId == parentCommentId)
+                .Where(tc => tc.ParentCommentId == parentCommentId && tc.IsDeleted != true)
                 .Include(tc => tc.User)
                 .OrderBy(tc => tc.CreatedAt)
                 .ToListAsync();

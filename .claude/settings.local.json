@@ -8,7 +8,12 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(dotnet run:*)",
+      "Bash(timeout:*)",
+      "Bash(dotnet ef migrations:*)",
+      "Bash(dotnet tool install:*)",
+      "Bash(dotnet ef database:*)"
     ],
     "deny": []
   }
